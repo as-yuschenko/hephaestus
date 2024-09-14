@@ -1,0 +1,15 @@
+[Unit]
+Description=hephaestus
+[Service]
+Type=forking
+PIDFile=/run/hephaestus/pid
+ExecStart=/usr/bin/hephaestus -d
+ExecStop=/bin/kill -s SIGTERM -$MAINPID
+
+#if start after reboot faild and code = 11/SEGV this helps. may be need to enable swap
+Restart=on-failure
+RestartSec=5
+
+KillSignal=SIGTERM
+[Install]
+WantedBy=multi-user.target
