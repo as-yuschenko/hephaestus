@@ -19,6 +19,7 @@
 #include "../lib/Ceres/Ceres_names.h"
 #include "../lib/SerialPort/SerialPort.h"
 #include "../lib/UnixSocket/UnixSocket.h"
+#include "../lib/vCjson/vCjson.h"
 
 #define RUN_DIR             "/run/hephaestus/"
 #define ETC_DIR             "/etc/hephaestus/"
@@ -26,6 +27,7 @@
 #define FILE_SHMEM_SIZE     "/var/www/html/shmem/size"
 #define FILE_SOCK_CMD       "/run/hephaestus/sock_cmd"
 #define FILE_PID            "/run/hephaestus/pid"
+#define FILE_CONF           "/etc/hephaestus/server.conf"
 
 
 #define UART_PATH           "/dev/ttyACM0"
@@ -105,8 +107,84 @@ void store_event_zone (unsigned char* event, unsigned char* addr, unsigned char*
 void store_event_relay (unsigned char* event, unsigned char* addr, unsigned char* relay_num, unsigned char* prog);
 void free();
 
+
+int showTree(vCjson* json, int lvl)
+{
+    while (1)
+    {
+        if(json->go_next_sibling()) break;
+        for (int i = 0; i < lvl; i++) printf("\t");
+        json->show_node();
+
+        while (1)
+        {
+            if(json->go_node_child()) break;
+            showTree (json, lvl + 1);
+            json->go_node_parent();
+            break;
+        }
+    }
+    return 0;
+}
+
+
 int main(int argc, char** argv)
 {
+    /*----PARSE CONFIG----*/
+    {
+        vCjson json;
+        long long int file_size = -1;
+        int fd;
+        char* file_content = nullptr;
+
+        //get file len
+        struct stat finfo;
+        if (!stat(FILE_CONF, &finfo))
+        file_size = (long long int)finfo.st_size;
+
+        //read file
+        if (file_size > 0)
+        {
+            fd = open (FILE_CONF, O_RDONLY);
+            if (fd > 0)
+            {
+                file_content = new char[file_size + 1];
+                if ((read(fd, file_content, file_size)) == file_size)
+                {
+                    file_content[file_size] = 0x00;
+                    close(fd);
+                }
+                else
+                {
+                    printf("\nError: read server.conf\nExit.\n");
+                    delete []file_content;
+                    close(fd);
+                    exit(EXIT_FAILURE);
+                }
+            }
+            else
+            {
+                printf("\nError: open server.conf\nExit.\n");
+                delete []file_content;
+                close(fd);
+                exit(EXIT_FAILURE);
+            }
+        }
+        else
+        {
+            printf("\nError: server.conf is miss\nExit.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        //printf("%s\n", file_content);
+
+        if (json.parse(file_content) == VCJSON_OK)
+        {
+            showTree(&json, 0);
+        };
+        //return 0;
+    }
+
     /*----COMMAND SEND----*/
     {
         if (argc > 1)

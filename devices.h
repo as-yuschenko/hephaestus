@@ -6,10 +6,10 @@
 #define ZT_FIRE                 0x01
 #define ZT_SEC                  0x02
 #define ZT_COUNTER              0x03
-#define ZT_TERMO                0x04
-#define ZT_HUMIDITY             0x05
+#define ZT_ANALOG_DBL           0x04
+#define ZT_ANALOG_LI            0x05
 #define ZT_TECHNOLOGICAL        0x06
-#define ZT_WATER                0x07
+
 
 
 struct st_zone
@@ -21,6 +21,7 @@ struct st_zone
     unsigned char part;
     unsigned char is_polled;
     void*         p_part = nullptr;
+    void*         p_device = nullptr;
 
 };
 
