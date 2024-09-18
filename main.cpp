@@ -12,6 +12,7 @@
 
 #include "devices.h"
 #include "commands.h"
+#include "help.h"
 
 
 #include "../Debug/debug.h"
@@ -30,11 +31,11 @@
 #define FILE_CONF           "/etc/hephaestus/server.conf"
 
 
-#define UART_PATH           "/dev/ttyACM0"
+//#define UART_PATH           "/dev/ttyACM0"
 //#define UART_PATH           "/dev/ttyBOLID"
-#define UART_SPEED          9600
+//#define UART_SPEED          9600
 #define UART_BUFF_SIZE      1000
-#define UART_RX_WAIT        10000
+//#define UART_RX_WAIT        10000
 //#define UART_QNT_REQUESTS   1000
 
 #define DELAY               100000
@@ -130,61 +131,6 @@ int showTree(vCjson* json, int lvl)
 
 int main(int argc, char** argv)
 {
-    /*----PARSE CONFIG----*/
-    {
-        vCjson json;
-        long long int file_size = -1;
-        int fd;
-        char* file_content = nullptr;
-
-        //get file len
-        struct stat finfo;
-        if (!stat(FILE_CONF, &finfo))
-        file_size = (long long int)finfo.st_size;
-
-        //read file
-        if (file_size > 0)
-        {
-            fd = open (FILE_CONF, O_RDONLY);
-            if (fd > 0)
-            {
-                file_content = new char[file_size + 1];
-                if ((read(fd, file_content, file_size)) == file_size)
-                {
-                    file_content[file_size] = 0x00;
-                    close(fd);
-                }
-                else
-                {
-                    printf("\nError: read server.conf\nExit.\n");
-                    delete []file_content;
-                    close(fd);
-                    exit(EXIT_FAILURE);
-                }
-            }
-            else
-            {
-                printf("\nError: open server.conf\nExit.\n");
-                delete []file_content;
-                close(fd);
-                exit(EXIT_FAILURE);
-            }
-        }
-        else
-        {
-            printf("\nError: server.conf is miss\nExit.\n");
-            exit(EXIT_FAILURE);
-        }
-
-        //printf("%s\n", file_content);
-
-        if (json.parse(file_content) == VCJSON_OK)
-        {
-            showTree(&json, 0);
-        };
-        //return 0;
-    }
-
     /*----COMMAND SEND----*/
     {
         if (argc > 1)
@@ -217,29 +163,167 @@ int main(int argc, char** argv)
             {
                 g_deamon_run = 1;
             }
+            else if ((argc == 2) && (!strcmp("-h", argv[1])))
+            {
+                printf("%s", HELP);
+                exit(EXIT_SUCCESS);
+            }
             else
             {
-                printf("See help\n");
-                return 0;
+                printf("Use -h to see help\n");
+                exit(EXIT_SUCCESS);
             }
         }
     }
 
     if (daemon_status(FILE_PID)) return -1;
 
+
+    /*----PARSE CONFIG----*/
+    vCjson json;
+    char* file_content = nullptr;
+
+    {
+        long long int file_size = -1;
+        int fd;
+
+        //get file len
+        struct stat finfo;
+        if (!stat(FILE_CONF, &finfo)) file_size = (long long int)finfo.st_size;
+
+        //read file
+        if (file_size > 0)
+        {
+            fd = open (FILE_CONF, O_RDONLY);
+            if (fd > 0)
+            {
+                file_content = new char[file_size + 1];
+                if ((read(fd, file_content, file_size)) == file_size)
+                {
+                    file_content[file_size] = 0x00;
+                    close(fd);
+                }
+                else
+                {
+                    printf("\nError: read server.conf\nExit.\n");
+                    exit(EXIT_FAILURE);
+                }
+            }
+            else
+            {
+                printf("\nError: open server.conf\nExit.\n");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else
+        {
+            printf("\nError: server.conf is miss\nExit.\n");
+            exit(EXIT_FAILURE);
+        }
+        //printf("%s\n", file_content);
+
+        if (json.parse(file_content) != VCJSON_OK)
+        {
+            printf("\nError: server.conf parse\nExit.\n");
+            exit(EXIT_FAILURE);
+        }
+        //showTree(&json, 0);
+    }
+
+
+
     ceres_init();
     sig_handler_conf();
 
     char res;
 
-    int*            l;
-    unsigned char*  f;
+
 
     /*----SERIAL PORT----*/
+    int*            l;
+    unsigned char*  f;
+    st_uart_conf uart_conf;
+
     {
+        unsigned char success = 1;
+
+        //get uart config data from file
+        if (!json.go_node_name("uart"))
+        {
+            //json.show_node();
+            if (!json.go_node_child())
+            {
+                if(!json.go_node_name_on_layer("path"))
+                {
+                    if (json.get_node_type() == VCJSON_NT_PNV)
+                    {
+                        uart_conf.path = new char[json.get_node_value_len() + 1];
+                        memcpy(uart_conf.path, json.get_node_value_ptr(), json.get_node_value_len());
+                        uart_conf.path[json.get_node_value_len()] = 0x00;
+                        printf("uart path: [%s]\n", uart_conf.path);
+
+                        if(!json.go_node_name_on_layer("speed"))
+                        {
+                            if (json.get_node_type() == VCJSON_NT_NUM)
+                            {
+                                uart_conf.speed = strtol(json.get_node_value_str(), nullptr, 10);
+                                printf("uart speed: [%i]\n", uart_conf.speed);
+
+                                if(!json.go_node_name_on_layer("wait response"))
+                                {
+                                    if (json.get_node_type() == VCJSON_NT_NUM)
+                                    {
+                                        uart_conf.wait_response= strtol(json.get_node_value_str(), nullptr, 10);
+                                        printf("uart wait_response: [%i]\n", uart_conf.wait_response);
+
+                                        if(!json.go_node_name_on_layer("delay tx"))
+                                        {
+                                            if (json.get_node_type() == VCJSON_NT_NUM)
+                                            {
+                                                uart_conf.delay_tx= strtol(json.get_node_value_str(), nullptr, 10);
+                                                printf("uart delay_tx: [%i]\n", uart_conf.delay_tx);
+
+                                                if(!json.go_node_name_on_layer("delay rx"))
+                                                {
+                                                    if (json.get_node_type() == VCJSON_NT_NUM)
+                                                    {
+                                                        uart_conf.delay_rx= strtol(json.get_node_value_str(), nullptr, 10);
+                                                        printf("uart delay_rx: [%i]\n", uart_conf.delay_rx);
+                                                    }
+                                                    else success = 0;
+                                                }
+                                                else success = 0;
+                                            }
+                                            else success = 0;
+                                        }
+                                        else success = 0;
+                                    }
+                                    else success = 0;
+                                }
+                                else success = 0;
+                            }
+                            else success = 0;
+                        }
+                        else success = 0;
+                    }
+                    else success = 0;
+                }
+                else success = 0;
+            }
+            else success = 0;
+        }
+        else success = 0;
+
+        if (!success)
+        {
+            printf("\nError: server.conf uart settings\nExit.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        //init uart
         g_uart = new SerialPort;
 
-        if (g_uart->init(1, UART_PATH, UART_SPEED, UART_BUFF_SIZE, 50, 0, UART_RX_WAIT))
+        if (g_uart->init(1, uart_conf.path, uart_conf.speed, UART_BUFF_SIZE, uart_conf.delay_tx, uart_conf.delay_rx, uart_conf.wait_response))
         {
             printf("Error!\nCant init uart. Code:%i\n", g_uart->state);
             exit(EXIT_FAILURE);
@@ -686,12 +770,14 @@ int main(int argc, char** argv)
         }
     }
 
-    if (g_deamon_run){
-    if (daemon_start(FILE_PID, &g_pid_fd)){
-        free();
-        exit(EXIT_FAILURE);
+    if (g_deamon_run)
+    {
+        if (daemon_start(FILE_PID, &g_pid_fd))
+        {
+            free();
+            exit(EXIT_FAILURE);
+        }
     }
-}
 
     /*----POLLING----*/
 

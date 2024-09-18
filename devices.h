@@ -10,7 +10,14 @@
 #define ZT_ANALOG_LI            0x05
 #define ZT_TECHNOLOGICAL        0x06
 
-
+struct st_uart_conf
+{
+    char* path = nullptr;
+    int speed;
+    int wait_response;
+    int delay_rx;
+    int delay_tx;
+};
 
 struct st_zone
 {
